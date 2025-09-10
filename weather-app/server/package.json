@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "dev": "nodemon",
     "build": "tsc",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test-weather": "ts-node src/tests/test-weather.ts"
   },
   "keywords": [],
   "author": "Akash Singh",
