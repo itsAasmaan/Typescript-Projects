@@ -2,33 +2,22 @@ import { Request, Response } from "express";
 import weatherService from "../services/weatherService";
 import {
   WeatherQuery,
+  ForecastQuery,
   ApiResponse,
   WeatherData,
-  ForecastQuery,
   ForecastData,
 } from "../types/weather.types";
 
 class WeatherController {
   async getCurrentWeather(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
-
     try {
-      const query: WeatherQuery = this.validateWeatherQuery(req.query);
+      const query = this.extractWeatherQuery(req.query);
       const weatherData = await weatherService.getCurrentWeather(query);
 
-      const response: ApiResponse<WeatherData> = {
-        success: true,
-        data: weatherData,
-        timestamp: new Date().toISOString(),
-        meta: {
-          requestId: this.generateRequestId(),
-          responseTime: Date.now() - startTime,
-        },
-      };
-
-      res.status(200).json(response);
+      this.sendSuccessResponse(res, weatherData, startTime);
     } catch (error) {
-      this.handleError(error, res, startTime);
+      this.sendErrorResponse(res, error, startTime);
     }
   }
 
@@ -36,21 +25,12 @@ class WeatherController {
     const startTime = Date.now();
 
     try {
-      const query: ForecastQuery = this.validateForecastQuery(req.query);
+      const query = this.extractForecastQuery(req.query);
       const forecastData = await weatherService.getWeatherForecast(query);
-      const response: ApiResponse<ForecastData> = {
-        success: true,
-        data: forecastData,
-        timestamp: new Date().toISOString(),
-        meta: {
-          requestId: this.generateRequestId(),
-          responseTime: Date.now() - startTime,
-        },
-      };
 
-      res.status(200).json(response);
+      this.sendSuccessResponse(res, forecastData, startTime);
     } catch (error) {
-      this.handleError(error, res, startTime);
+      this.sendErrorResponse(res, error, startTime);
     }
   }
 
@@ -59,159 +39,50 @@ class WeatherController {
 
     try {
       const { cities, units, type } = req.query;
-      if (!cities || typeof cities !== "string") {
-        res
-          .status(400)
-          .json(
-            this.createErrorResponse(
-              "MISSING_CITIES",
-              "Cities parameter is required and must be a comma-separated string",
-              startTime
-            )
-          );
-        return;
-      }
-
-      const cityList = cities
-        .split(",")
-        .map((city) => city.trim())
-        .filter((city) => city.length > 0);
-
-      if (cityList.length === 0) {
-        res
-          .status(400)
-          .json(
-            this.createErrorResponse(
-              "INVALID_CITIES",
-              "At least one valid city name is required",
-              startTime
-            )
-          );
-        return;
-      }
-
-      if (cityList.length > 10) {
-        res
-          .status(400)
-          .json(
-            this.createErrorResponse(
-              "TOO_MANY_CITIES",
-              "Maximum 10 cities allowed per request",
-              startTime
-            )
-          );
-        return;
-      }
-
+      const cityList = this.extractCityList(cities as string);
       const requestType = (type as string) || "current";
       const weatherUnits =
         (units as "metric" | "imperial" | "kelvin") || "metric";
 
-      const results = await Promise.allSettled(
-        cityList.map(async (city) => {
-          const query = { city, units: weatherUnits };
-
-          if (requestType === "forecast") {
-            return await weatherService.getWeatherForecast(query);
-          } else {
-            return await weatherService.getCurrentWeather(query);
-          }
-        })
+      const results = await this.processBulkWeatherRequest(
+        cityList,
+        requestType,
+        weatherUnits
       );
-
-      const successfulResults: any[] = [];
-      const failedResults: any[] = [];
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          successfulResults.push({
-            city: cityList[index],
-            data: result.value,
-          });
-        } else {
-          failedResults.push({
-            city: cityList[index],
-            error: result.reason.message,
-          });
-        }
-      });
-
-      const response: ApiResponse<any> = {
-        success: successfulResults.length > 0,
-        data: {
-          successful: successfulResults,
-          failed: failedResults,
-          summary: {
-            total: cityList.length,
-            successful: successfulResults.length,
-            failed: failedResults.length,
-          },
-        },
-        timestamp: new Date().toISOString(),
-        meta: {
-          requestId: this.generateRequestId(),
-          responseTime: Date.now() - startTime,
-        },
-      };
-
-      res.status(200).json(response);
+      this.sendSuccessResponse(res, results, startTime);
     } catch (error) {
-      this.handleError(error, res, startTime);
+      this.sendErrorResponse(res, error, startTime);
     }
   }
 
-  private validateWeatherQuery(query: any): WeatherQuery {
-    const { city, lat, lon, units, lang } = query;
-
-    if (!city && (lat === undefined || lon === undefined)) {
-      throw new Error("Either city or coordinates (lat, lon) must be provided");
-    }
-
-    if (lat !== undefined || lon !== undefined) {
-      const latitude = parseFloat(lat);
-      const longitude = parseFloat(lon);
-
-      if (isNaN(latitude) || isNaN(longitude)) {
-        throw new Error(
-          "Invalid coordinates: lat and lon must be valid numbers"
-        );
-      }
-
-      if (latitude < -90 || latitude > 90) {
-        throw new Error("Invalid latitude: must be between -90 and 90");
-      }
-
-      if (longitude < -180 || longitude > 180) {
-        throw new Error("Invalid longitude: must be between -180 and 180");
-      }
-
+  // ========================================
+  // PRIVATE HELPER METHODS
+  // ========================================
+  private extractWeatherQuery(query: any): WeatherQuery {
+    const { city, lat, lon, units } = query;
+    if (lat !== undefined && lon !== undefined) {
       return {
-        lat: latitude,
-        lon: longitude,
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
         units: this.validateUnits(units),
       };
     }
 
-    // Validate city name
-    if (typeof city !== "string" || city.trim().length === 0) {
-      throw new Error("City name must be a non-empty string");
+    if (city) {
+      return {
+        city: city.trim(),
+        units: this.validateUnits(units),
+      };
     }
 
-    if (city.length > 100) {
-      throw new Error("City name must be less than 100 characters");
-    }
-
-    return {
-      city: city.trim(),
-      units: this.validateUnits(units),
-    };
+    throw new Error("Either city or coordinates (lat, lon) must be provided");
   }
 
-  private validateForecastQuery(query: any): ForecastQuery {
-    const baseQuery = this.validateWeatherQuery(query);
+  private extractForecastQuery(query: any): ForecastQuery {
+    const baseQuery = this.extractWeatherQuery(query);
     const { days } = query;
-    let forecastDays = 5;
 
+    let forecastDays = 5;
     if (days !== undefined) {
       const parsedDays = parseInt(days as string, 10);
 
@@ -222,16 +93,79 @@ class WeatherController {
       forecastDays = parsedDays;
     }
 
+    return { ...baseQuery, days: forecastDays };
+  }
+
+  private extractCityList(cities: string): string[] {
+    if (!cities || typeof cities !== "string") {
+      throw new Error(
+        "Cities parameter is required and must be a comma-separated string"
+      );
+    }
+
+    const cityList = cities
+      .split(",")
+      .map((city) => city.trim())
+      .filter((city) => city.length > 0);
+
+    if (cityList.length === 0) {
+      throw new Error("At least one valid city name is required");
+    }
+
+    if (cityList.length > 10) {
+      throw new Error("Maximum 10 cities allowed per request");
+    }
+
+    return cityList;
+  }
+
+  private async processBulkWeatherRequest(
+    cityList: string[],
+    type: string,
+    units: "metric" | "imperial" | "kelvin"
+  ): Promise<any> {
+    const weatherPromises = cityList.map(async (city) => {
+      try {
+        const query = { city, units };
+
+        if (type === "forecast") {
+          return { city, data: await weatherService.getWeatherForecast(query) };
+        } else {
+          return { city, data: await weatherService.getCurrentWeather(query) };
+        }
+      } catch (error) {
+        return {
+          city,
+          error: (error as Error).message || "Unknown error occurred",
+        };
+      }
+    });
+
+    const results = await Promise.all(weatherPromises);
+
+    // Separate successful and failed requests
+    const successful = results.filter((result) => result.data);
+    const failed = results.filter((result) => result.error);
+
     return {
-      ...baseQuery,
-      days: forecastDays,
+      successful,
+      failed,
+      summary: {
+        total: cityList.length,
+        successful: successful.length,
+        failed: failed.length,
+      },
     };
   }
 
   private validateUnits(units: any): "metric" | "imperial" | "kelvin" {
     if (!units) return "metric";
 
-    const validUnits = ["metric", "imperial", "kelvin"];
+    const validUnits: Array<"metric" | "imperial" | "kelvin"> = [
+      "metric",
+      "imperial",
+      "kelvin",
+    ];
 
     if (!validUnits.includes(units)) {
       throw new Error(`Invalid units: must be one of ${validUnits.join(", ")}`);
@@ -240,58 +174,37 @@ class WeatherController {
     return units;
   }
 
-  private handleError(error: any, res: Response, startTime: number): void {
-    console.error("Weather Controller Error:", error);
+  private sendSuccessResponse<T>(
+    res: Response,
+    data: T,
+    startTime: number
+  ): void {
+    const response: ApiResponse<T> = {
+      success: true,
+      data,
+      timestamp: new Date().toISOString(),
+      meta: {
+        requestId: this.generateRequestId(),
+        responseTime: Date.now() - startTime,
+      },
+    };
 
-    let statusCode = 500;
-    let errorCode = "INTERNAL_ERROR";
-    let message = "An unexpected error occurred";
-
-    if (error.message) {
-      message = error.message;
-
-      // Determine status code based on error message
-      if (
-        message.includes("not found") ||
-        message.includes("Location not found")
-      ) {
-        statusCode = 404;
-        errorCode = "LOCATION_NOT_FOUND";
-      } else if (message.includes("Invalid") || message.includes("must be")) {
-        statusCode = 400;
-        errorCode = "INVALID_PARAMETERS";
-      } else if (message.includes("API key")) {
-        statusCode = 401;
-        errorCode = "INVALID_API_KEY";
-      } else if (message.includes("rate limit")) {
-        statusCode = 429;
-        errorCode = "RATE_LIMIT_EXCEEDED";
-      } else if (
-        message.includes("unavailable") ||
-        message.includes("service")
-      ) {
-        statusCode = 503;
-        errorCode = "SERVICE_UNAVAILABLE";
-      }
-    }
-
-    const errorResponse = this.createErrorResponse(
-      errorCode,
-      message,
-      startTime
-    );
-    res.status(statusCode).json(errorResponse);
+    res.status(200).json(response);
   }
 
-  private createErrorResponse(
-    code: string,
-    message: string,
+  private sendErrorResponse(
+    res: Response,
+    error: any,
     startTime: number
-  ): ApiResponse<null> {
-    return {
+  ): void {
+    console.error("Weather Controller Error:", error.message || error);
+
+    const { statusCode, errorCode, message } = this.mapErrorToResponse(error);
+
+    const errorResponse: ApiResponse<null> = {
       success: false,
       error: {
-        code,
+        code: errorCode,
         message,
       },
       timestamp: new Date().toISOString(),
@@ -300,6 +213,90 @@ class WeatherController {
         responseTime: Date.now() - startTime,
       },
     };
+
+    res.status(statusCode).json(errorResponse);
+  }
+
+  private mapErrorToResponse(error: any): {
+    statusCode: number;
+    errorCode: string;
+    message: string;
+  } {
+    const message = error.message || "An unexpected error occurred";
+
+    // Network and service errors
+    if (message.includes("ENOTFOUND") || message.includes("unavailable")) {
+      return {
+        statusCode: 503,
+        errorCode: "SERVICE_UNAVAILABLE",
+        message: "Weather service is temporarily unavailable",
+      };
+    }
+
+    if (message.includes("API key") || message.includes("401")) {
+      return {
+        statusCode: 401,
+        errorCode: "INVALID_API_KEY",
+        message: "Invalid API key",
+      };
+    }
+
+    if (message.includes("not found") || message.includes("404")) {
+      return {
+        statusCode: 404,
+        errorCode: "LOCATION_NOT_FOUND",
+        message: "Location not found",
+      };
+    }
+
+    // Rate limit errors
+    if (message.includes("rate limit") || message.includes("429")) {
+      return {
+        statusCode: 429,
+        errorCode: "RATE_LIMIT_EXCEEDED",
+        message: "API rate limit exceeded",
+      };
+    }
+
+    // Validation errors (client errors)
+    if (this.isValidationError(message)) {
+      return {
+        statusCode: 400,
+        errorCode: "INVALID_PARAMETERS",
+        message,
+      };
+    }
+
+    // Default server error
+    return {
+      statusCode: 500,
+      errorCode: "INTERNAL_ERROR",
+      message:
+        process.env.NODE_ENV === "development"
+          ? message
+          : "An unexpected error occurred",
+    };
+  }
+
+  private isValidationError(message: string): boolean {
+    const validationKeywords = [
+      "must be",
+      "required",
+      "invalid",
+      "between",
+      "maximum",
+      "minimum",
+      "either",
+      "should",
+      "cannot",
+      "exceeds",
+      "less than",
+      "greater than",
+    ];
+
+    return validationKeywords.some((keyword) =>
+      message.toLowerCase().includes(keyword.toLowerCase())
+    );
   }
 
   private generateRequestId(): string {
