@@ -1,7 +1,10 @@
 import { Router } from 'express';
-import WeatherController from '../controllers/weatherController';
+import WeatherController from '../controllers/WeatherController';
+import { requestLogger } from '../middleware/requestLogger';
 
 const router = Router();
+
+router.use(requestLogger);
 
 router.get('/current', (req, res) => WeatherController.getCurrentWeather(req, res));
 
