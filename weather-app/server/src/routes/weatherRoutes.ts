@@ -7,4 +7,6 @@ router.get('/current', (req, res) => WeatherController.getCurrentWeather(req, re
 
 router.get('/forecast', (req, res) => WeatherController.getWeatherForecast(req, res));
 
+router.get('/search', (req, res) => WeatherController.searchWeather(req, res));
+
 export default router;

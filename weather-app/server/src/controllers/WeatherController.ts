@@ -54,6 +54,112 @@ class WeatherController {
     }
   }
 
+  async searchWeather(req: Request, res: Response): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      const { cities, units, type } = req.query;
+      if (!cities || typeof cities !== "string") {
+        res
+          .status(400)
+          .json(
+            this.createErrorResponse(
+              "MISSING_CITIES",
+              "Cities parameter is required and must be a comma-separated string",
+              startTime
+            )
+          );
+        return;
+      }
+
+      const cityList = cities
+        .split(",")
+        .map((city) => city.trim())
+        .filter((city) => city.length > 0);
+
+      if (cityList.length === 0) {
+        res
+          .status(400)
+          .json(
+            this.createErrorResponse(
+              "INVALID_CITIES",
+              "At least one valid city name is required",
+              startTime
+            )
+          );
+        return;
+      }
+
+      if (cityList.length > 10) {
+        res
+          .status(400)
+          .json(
+            this.createErrorResponse(
+              "TOO_MANY_CITIES",
+              "Maximum 10 cities allowed per request",
+              startTime
+            )
+          );
+        return;
+      }
+
+      const requestType = (type as string) || "current";
+      const weatherUnits =
+        (units as "metric" | "imperial" | "kelvin") || "metric";
+
+      const results = await Promise.allSettled(
+        cityList.map(async (city) => {
+          const query = { city, units: weatherUnits };
+
+          if (requestType === "forecast") {
+            return await weatherService.getWeatherForecast(query);
+          } else {
+            return await weatherService.getCurrentWeather(query);
+          }
+        })
+      );
+
+      const successfulResults: any[] = [];
+      const failedResults: any[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          successfulResults.push({
+            city: cityList[index],
+            data: result.value,
+          });
+        } else {
+          failedResults.push({
+            city: cityList[index],
+            error: result.reason.message,
+          });
+        }
+      });
+
+      const response: ApiResponse<any> = {
+        success: successfulResults.length > 0,
+        data: {
+          successful: successfulResults,
+          failed: failedResults,
+          summary: {
+            total: cityList.length,
+            successful: successfulResults.length,
+            failed: failedResults.length,
+          },
+        },
+        timestamp: new Date().toISOString(),
+        meta: {
+          requestId: this.generateRequestId(),
+          responseTime: Date.now() - startTime,
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      this.handleError(error, res, startTime);
+    }
+  }
+
   private validateWeatherQuery(query: any): WeatherQuery {
     const { city, lat, lon, units, lang } = query;
 
