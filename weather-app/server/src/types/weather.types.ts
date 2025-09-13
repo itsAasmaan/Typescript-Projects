@@ -173,4 +173,12 @@ export interface ApiResponse<T> {
   data?: T;
   error?: WeatherError;
   timestamp: string;
+  meta?: {
+    requestId: string;
+    responseTime: number;
+    rateLimit?: {
+      remaining: number;
+      resetTime: string;
+    };
+  };
 }

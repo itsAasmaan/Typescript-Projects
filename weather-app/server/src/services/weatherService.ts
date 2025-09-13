@@ -1,3 +1,5 @@
+import dotenv from "dotenv";
+import path from "path";
 import axios, { AxiosResponse } from "axios";
 import {
   WeatherApiResponse,
@@ -8,6 +10,7 @@ import {
   ForecastQuery,
 } from "../types/weather.types";
 
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 class WeatherService {
   private readonly apiKey: string;
   private readonly baseUrl: string;
