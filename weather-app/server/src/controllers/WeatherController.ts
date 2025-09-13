@@ -4,6 +4,8 @@ import {
   WeatherQuery,
   ApiResponse,
   WeatherData,
+  ForecastQuery,
+  ForecastData,
 } from "../types/weather.types";
 
 class WeatherController {
@@ -17,6 +19,28 @@ class WeatherController {
       const response: ApiResponse<WeatherData> = {
         success: true,
         data: weatherData,
+        timestamp: new Date().toISOString(),
+        meta: {
+          requestId: this.generateRequestId(),
+          responseTime: Date.now() - startTime,
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      this.handleError(error, res, startTime);
+    }
+  }
+
+  async getWeatherForecast(req: Request, res: Response): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      const query: ForecastQuery = this.validateForecastQuery(req.query);
+      const forecastData = await weatherService.getWeatherForecast(query);
+      const response: ApiResponse<ForecastData> = {
+        success: true,
+        data: forecastData,
         timestamp: new Date().toISOString(),
         meta: {
           requestId: this.generateRequestId(),
@@ -74,6 +98,27 @@ class WeatherController {
     return {
       city: city.trim(),
       units: this.validateUnits(units),
+    };
+  }
+
+  private validateForecastQuery(query: any): ForecastQuery {
+    const baseQuery = this.validateWeatherQuery(query);
+    const { days } = query;
+    let forecastDays = 5;
+
+    if (days !== undefined) {
+      const parsedDays = parseInt(days as string, 10);
+
+      if (isNaN(parsedDays) || parsedDays < 1 || parsedDays > 5) {
+        throw new Error("Days must be a number between 1 and 5");
+      }
+
+      forecastDays = parsedDays;
+    }
+
+    return {
+      ...baseQuery,
+      days: forecastDays,
     };
   }
 
