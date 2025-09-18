@@ -2,15 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-
+import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler';
 
+dotenv.config();
 const app = express();
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true

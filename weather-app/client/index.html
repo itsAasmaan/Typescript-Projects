@@ -1,37 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Weather App</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/styles.css">
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="weather-card bg-white rounded-lg shadow-xl p-8 text-center">
-        <h1 class="text-4xl font-bold mb-6 text-blue-600">Weather App</h1>
-        <div class="search mb-6">
-            <input
-                type="text"
-                id="city-input"
-                placeholder="Enter city name"
-                class="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-            >
-            <button
-                id="search-btn"
-                class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-                Get Weather
-            </button>
-        </div>
-        <div id="weather-details" class="mt-6">
-            <h2 id="city-name" class="text-3xl font-semibold mb-2 text-gray-800"></h2>
-            <p id="temperature" class="text-5xl font-bold text-blue-700"></p>
-            <p id="description" class="text-xl text-gray-600 capitalize"></p>
-            <p id="humidity" class="text-lg text-gray-600 mt-2"></p>
-            <p id="wind-speed" class="text-lg text-gray-600"></p>
-        </div>
-    </div>
-    <script src="js/app.js"></script>
-</body>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
